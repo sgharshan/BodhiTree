@@ -82,11 +82,18 @@ function disconnectDrive() {
 /* ===================== Task model ===================== */
 function activeTasks() { return state.tasks.filter(t => !t.archivedAt); }
 
-function addTask({ name, icon, type, targetPerWeek }) {
+function tasksForDay(dateKey = todayKey()) {
+  const d = new Date(dateKey + 'T00:00:00');
+  const dayOfWeek = d.getDay();
+  return activeTasks().filter(t => t.createdAt <= dateKey && (!t.days || t.days.includes(dayOfWeek)));
+}
+
+function addTask({ name, icon, type, targetPerWeek, days }) {
   const task = {
     id: 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     name, icon: icon || '●', type,
     targetPerWeek: type === 'weekly' ? Math.max(1, Math.min(7, Number(targetPerWeek) || 3)) : undefined,
+    days: Array.isArray(days) && days.length > 0 ? days : undefined,
     createdAt: todayKey(),
   };
   state.tasks.push(task);
@@ -120,7 +127,7 @@ function isDone(t, dateKey = todayKey()) {
   return t.type === 'daily' ? isCompleted(t.id, dateKey) : weeklyProgress(t, dateKey) >= t.targetPerWeek;
 }
 function dayScore(dateKey = todayKey()) {
-  const tasks = activeTasks().filter(t => t.createdAt <= dateKey);
+  const tasks = tasksForDay(dateKey);
   if (tasks.length === 0) return 0;
   const earned = tasks.reduce((n, t) => n + (isDone(t, dateKey) ? 1 : 0), 0);
   return earned / tasks.length;
@@ -130,7 +137,7 @@ function currentStreak() {
   let d = new Date();
   while (true) {
     const key = todayKey(d);
-    if (activeTasks().filter(t => t.createdAt <= key).length > 0 && dayScore(key) >= 1) {
+    if (tasksForDay(key).length > 0 && dayScore(key) >= 1) {
       streak++; d.setDate(d.getDate() - 1);
     } else break;
   }
@@ -250,7 +257,7 @@ function dayStripHtml() {
 
 function renderToday() {
   const screen = document.getElementById('screen');
-  const tasks = activeTasks().filter(t => t.createdAt <= todayKey());
+  const tasks = tasksForDay();
   const score = tasks.length ? Math.round(dayScore() * 100) : 0;
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -365,7 +372,7 @@ function renderManage() {
           </div>
           <div>
             <label for="taskName">Name</label>
-            <input id="taskName" placeholder="e.g. Water only" required />
+            <input id="taskName" placeholder="e.g. Gym" required />
           </div>
         </div>
         <div class="field row-3">
@@ -379,6 +386,18 @@ function renderManage() {
           <div id="targetWrap" style="display:none;">
             <label for="taskTarget">Times / week</label>
             <input id="taskTarget" type="number" min="1" max="7" value="3" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Specific days (optional)</label>
+          <div id="dayPicker" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="1" /> Mon</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="2" /> Tue</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="3" /> Wed</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="4" /> Thu</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="5" /> Fri</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="6" /> Sat</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="0" /> Sun</label>
           </div>
         </div>
         <button type="submit" class="btn-primary">Add task</button>
@@ -428,11 +447,14 @@ function renderManage() {
 
   document.getElementById('taskForm').addEventListener('submit', e => {
     e.preventDefault();
+    const dayCheckboxes = document.querySelectorAll('#dayPicker input[type="checkbox"]:checked');
+    const days = dayCheckboxes.length > 0 ? Array.from(dayCheckboxes).map(cb => Number(cb.value)) : undefined;
     addTask({
       name: document.getElementById('taskName').value.trim(),
       icon: document.getElementById('taskIcon').value.trim(),
       type: typeSel.value,
       targetPerWeek: document.getElementById('taskTarget').value,
+      days,
     });
     renderManage();
   });
@@ -443,11 +465,14 @@ function renderManage() {
   });
 
   const list = document.getElementById('taskList');
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   activeTasks().forEach(t => {
     const li = document.createElement('li');
     li.className = 'manage-row';
     const freq = t.type === 'weekly' ? `${escapeHtml(String(t.targetPerWeek))}x / week` : 'daily';
-    li.innerHTML = `<span class="task-icon">${escapeHtml(t.icon)}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freq}</span>`;
+    const days = t.days ? t.days.map(d => dayNames[d]).join(', ') : '';
+    const freqLabel = days ? `${freq} · ${days}` : freq;
+    li.innerHTML = `<span class="task-icon">${escapeHtml(t.icon)}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freqLabel}</span>`;
     const del = document.createElement('button');
     del.className = 'btn-text';
     del.textContent = 'Retire';
@@ -495,6 +520,7 @@ function sanitizeImportedState(parsed) {
         icon: typeof t.icon === 'string' ? t.icon.slice(0, 4) : '●',
         type: t.type,
         targetPerWeek: t.type === 'weekly' ? Math.max(1, Math.min(7, Number(t.targetPerWeek) || 3)) : undefined,
+        days: Array.isArray(t.days) ? t.days.filter(d => d >= 0 && d <= 6) : undefined,
         createdAt: typeof t.createdAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.createdAt) ? t.createdAt : todayKey(),
         archivedAt: typeof t.archivedAt === 'string' ? t.archivedAt : undefined,
       }));
