@@ -1,0 +1,515 @@
+/* ===================== State ===================== */
+let state = {
+  tasks: [],
+  logs: {},
+  years: {},
+  settings: { reminderHour: 21 },
+  updatedAt: 0,
+};
+let currentTab = 'today';
+let driveSyncTimer = null;
+let lastSyncedAt = null;
+let syncError = null;
+
+function todayKey(d = new Date()) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function currentYearKey() { return String(new Date().getFullYear()); }
+function isoWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = (d.getDay() + 6) % 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - day);
+  return todayKey(monday);
+}
+
+/* ===================== Persistence ===================== */
+function loadLocal() {
+  try {
+    const cached = localStorage.getItem('bodhi_state_cache');
+    if (cached) state = Object.assign(state, JSON.parse(cached));
+  } catch (e) { /* ignore */ }
+}
+
+function persist({ skipDriveSync } = {}) {
+  state.updatedAt = Date.now();
+  try { localStorage.setItem('bodhi_state_cache', JSON.stringify(state)); } catch (e) {}
+  if (!skipDriveSync && driveSync.isConnected()) scheduleDriveSync();
+}
+
+function scheduleDriveSync() {
+  clearTimeout(driveSyncTimer);
+  driveSyncTimer = setTimeout(async () => {
+    try {
+      await driveSync.saveState(state);
+      lastSyncedAt = Date.now();
+      syncError = null;
+    } catch (e) {
+      syncError = e.message;
+    }
+    if (currentTab === 'manage') renderManage();
+  }, 2000);
+}
+
+async function connectDrive() {
+  try {
+    await driveSync.connect();
+    const remote = await driveSync.loadState();
+    if (remote && (remote.updatedAt || 0) > (state.updatedAt || 0)) {
+      state = Object.assign({ tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 }, remote);
+      persist({ skipDriveSync: true });
+    } else {
+      await driveSync.saveState(state);
+      lastSyncedAt = Date.now();
+    }
+    checkYearRollover();
+    render();
+  } catch (e) {
+    syncError = e.message === 'not_configured'
+      ? 'Add your Google Client ID in js/config.js first — see README.'
+      : 'Could not connect to Google Drive.';
+    renderManage();
+  }
+}
+
+function disconnectDrive() {
+  driveSync.disconnect();
+  syncError = null;
+  lastSyncedAt = null;
+  renderManage();
+}
+
+/* ===================== Task model ===================== */
+function activeTasks() { return state.tasks.filter(t => !t.archivedAt); }
+
+function addTask({ name, icon, type, targetPerWeek }) {
+  const task = {
+    id: 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name, icon: icon || '●', type,
+    targetPerWeek: type === 'weekly' ? Math.max(1, Math.min(7, Number(targetPerWeek) || 3)) : undefined,
+    createdAt: todayKey(),
+  };
+  state.tasks.push(task);
+  persist();
+  return task;
+}
+function archiveTask(id) {
+  const t = state.tasks.find(t => t.id === id);
+  if (t) { t.archivedAt = todayKey(); persist(); }
+}
+
+/* ===================== Completion & scoring ===================== */
+function isCompleted(taskId, dateKey = todayKey()) {
+  return !!(state.logs[dateKey] && state.logs[dateKey][taskId]);
+}
+function toggleCompletion(taskId, dateKey = todayKey()) {
+  if (!state.logs[dateKey]) state.logs[dateKey] = {};
+  if (state.logs[dateKey][taskId]) delete state.logs[dateKey][taskId];
+  else state.logs[dateKey][taskId] = true;
+  persist();
+}
+function weeklyProgress(task, dateKey = todayKey()) {
+  const week = isoWeekKey(dateKey);
+  let count = 0;
+  for (const [d, entries] of Object.entries(state.logs)) {
+    if (isoWeekKey(d) === week && entries[task.id]) count++;
+  }
+  return count;
+}
+function isDone(t, dateKey = todayKey()) {
+  return t.type === 'daily' ? isCompleted(t.id, dateKey) : weeklyProgress(t, dateKey) >= t.targetPerWeek;
+}
+function dayScore(dateKey = todayKey()) {
+  const tasks = activeTasks().filter(t => t.createdAt <= dateKey);
+  if (tasks.length === 0) return 0;
+  const earned = tasks.reduce((n, t) => n + (isDone(t, dateKey) ? 1 : 0), 0);
+  return earned / tasks.length;
+}
+function currentStreak() {
+  let streak = 0;
+  let d = new Date();
+  while (true) {
+    const key = todayKey(d);
+    if (activeTasks().filter(t => t.createdAt <= key).length > 0 && dayScore(key) >= 1) {
+      streak++; d.setDate(d.getDate() - 1);
+    } else break;
+  }
+  return streak;
+}
+
+function earliestTaskDate() {
+  const dates = state.tasks.map(t => t.createdAt).sort();
+  return dates[0] || todayKey();
+}
+
+function bestStreak() {
+  let best = 0, run = 0;
+  const start = new Date(earliestTaskDate() + 'T00:00:00');
+  const end = new Date();
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = todayKey(d);
+    if (activeTasks().filter(t => t.createdAt <= key).length > 0 && dayScore(key) >= 1) {
+      run++; best = Math.max(best, run);
+    } else run = 0;
+  }
+  return best;
+}
+
+function reflectionNote(streak) {
+  if (streak === 0) return 'Every practice starts with a single day. Plant the first one today.';
+  if (streak < 3) return "You've begun. The first few days are the hardest to start and the easiest to lose — keep going.";
+  if (streak < 7) return 'A few days in a row now. The habit is still a choice, but it’s getting lighter to carry.';
+  if (streak < 21) return 'A full week or more of showing up. Somewhere in here, it starts becoming part of who you are.';
+  if (streak < 60) return 'Weeks of consistency. This is no longer effort — it’s rhythm.';
+  return 'Months of quiet discipline. The tree barely notices missing a leaf; the roots are what hold it now.';
+}
+
+/* ===================== Year / tree ===================== */
+const TREE_STAGES = ['seed', 'sprout', 'sapling', 'young', 'full'];
+function yearScore(yearKey = currentYearKey()) {
+  const start = new Date(Number(yearKey), 0, 1);
+  const end = yearKey === currentYearKey() ? new Date() : new Date(Number(yearKey), 11, 31);
+  let total = 0, days = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    total += dayScore(todayKey(d));
+    days++;
+  }
+  return days === 0 ? 0 : total / days;
+}
+function treeStage(score) {
+  const idx = Math.min(TREE_STAGES.length - 1, Math.floor(score * TREE_STAGES.length));
+  return TREE_STAGES[idx];
+}
+function checkYearRollover() {
+  const key = currentYearKey();
+  if (!state.years[key]) state.years[key] = { sealed: false };
+  let changed = false;
+  Object.keys(state.years).forEach(y => {
+    if (y !== key && !state.years[y].sealed) {
+      const s = yearScore(y);
+      state.years[y] = { sealed: true, finalStage: treeStage(s), finalScore: s };
+      changed = true;
+    }
+  });
+  if (changed) persist();
+}
+
+function treeSvg(stage) {
+  const canopy = (cx, cy, r, op) => `<circle class="glow-dot" cx="${cx}" cy="${cy}" r="${r}" fill="var(--accent)" opacity="${op}"/>`;
+  const trunk = (y1, y2, w) => `<line x1="110" y1="${y1}" x2="110" y2="${y2}" stroke="#7a5a34" stroke-width="${w}" stroke-linecap="round"/>`;
+  const svgs = {
+    seed:    `<svg viewBox="0 0 220 220">${trunk(205,196,4)}<ellipse cx="110" cy="200" rx="9" ry="6" fill="var(--accent)"/></svg>`,
+    sprout:  `<svg viewBox="0 0 220 220">${trunk(205,150,5)}${canopy(110,140,16,.85)}</svg>`,
+    sapling: `<svg viewBox="0 0 220 220">${trunk(205,110,7)}${canopy(110,98,30,.55)}${canopy(90,118,20,.8)}${canopy(130,118,20,.8)}</svg>`,
+    young:   `<svg viewBox="0 0 220 220">${trunk(205,85,9)}${canopy(110,72,42,.45)}${canopy(72,100,26,.75)}${canopy(148,100,26,.75)}${canopy(110,110,24,.85)}</svg>`,
+    full:    `<svg viewBox="0 0 220 220">${trunk(210,70,11)}${canopy(110,55,52,.35)}${canopy(60,90,32,.65)}${canopy(160,90,32,.65)}${canopy(85,105,30,.8)}${canopy(135,105,30,.8)}${canopy(110,95,34,.9)}<circle class="glow-dot" cx="110" cy="55" r="10" fill="var(--accent-glow)"/></svg>`,
+  };
+  return svgs[stage] || svgs.seed;
+}
+
+/* ===================== Rendering ===================== */
+function render() { screens[currentTab](); }
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  render();
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+function ringSvg(pct) {
+  const r = 22, c = 2 * Math.PI * r;
+  const off = c - (pct / 100) * c;
+  return `<svg viewBox="0 0 56 56">
+    <circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--border)" stroke-width="5"/>
+    <circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--accent)" stroke-width="5"
+      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"/>
+  </svg>`;
+}
+
+function dayStripHtml() {
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  let html = '<div class="day-strip">';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = todayKey(d);
+    const isFuture = key > todayKey();
+    const isToday = key === todayKey();
+    const s = isFuture ? 0 : dayScore(key);
+    const cls = isFuture ? '' : s >= 1 ? 'full' : s > 0 ? 'partial' : '';
+    html += `<div class="day-pill ${cls}${isToday ? ' today' : ''}">
+      <span class="dow">${d.toLocaleDateString(undefined, { weekday: 'narrow' })}</span>
+      <span class="dot"></span>
+      <span class="num">${d.getDate()}</span>
+    </div>`;
+  }
+  return html + '</div>';
+}
+
+function renderToday() {
+  const screen = document.getElementById('screen');
+  const tasks = activeTasks().filter(t => t.createdAt <= todayKey());
+  const score = tasks.length ? Math.round(dayScore() * 100) : 0;
+  const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  screen.innerHTML = `
+    <div class="eyebrow">${dateLabel}</div>
+    <div class="today-header">
+      <h1>Today</h1>
+      <div class="ring">${ringSvg(score)}<div class="pct">${score}%</div></div>
+    </div>
+    <p class="streak" style="margin-bottom:16px;">🔥 <b>${currentStreak()}</b> day streak</p>
+    ${dayStripHtml()}
+    <ul class="task-list" id="todayList"></ul>
+    <div id="reminderBanner"></div>
+  `;
+
+  const list = document.getElementById('todayList');
+  if (tasks.length === 0) {
+    list.innerHTML = `<li class="empty-state">No tasks yet. Head to Manage to set your first daily or weekly practice.</li>`;
+  } else {
+    tasks.forEach(t => {
+      const li = document.createElement('li');
+      li.className = 'task-row' + (isDone(t) ? ' done' : '');
+      const meta = t.type === 'weekly' ? `${weeklyProgress(t)}/${t.targetPerWeek} this week` : 'daily';
+      li.innerHTML = `
+        <span class="task-icon">${escapeHtml(t.icon)}</span>
+        <span class="task-name">${escapeHtml(t.name)}</span>
+        <span class="task-meta">${meta}</span>
+        <span class="task-check">${isDone(t) ? '✓' : ''}</span>
+      `;
+      li.addEventListener('click', () => {
+        toggleCompletion(t.id);
+        li.classList.add('pulse');
+        renderToday();
+      });
+      list.appendChild(li);
+    });
+  }
+  renderReminderBanner(tasks);
+}
+
+function renderReminderBanner(tasks) {
+  const el = document.getElementById('reminderBanner');
+  if (!el) return;
+  const hour = new Date().getHours();
+  const incomplete = tasks.filter(t => !isDone(t));
+  if (hour >= state.settings.reminderHour && incomplete.length > 0) {
+    el.innerHTML = `<div class="banner">
+      <svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+      <span>A few things left before bed: ${incomplete.map(t => escapeHtml(t.icon + ' ' + t.name)).join(', ')}</span>
+    </div>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+function renderTree() {
+  const screen = document.getElementById('screen');
+  const score = yearScore();
+  const stage = treeStage(score);
+  const daysComplete = Object.keys(state.logs).filter(d => d.startsWith(currentYearKey()) && dayScore(d) >= 1).length;
+  const streak = currentStreak();
+
+  screen.innerHTML = `
+    <div class="tree-wrap">
+      <div class="tree-year">${currentYearKey()} · ${Math.round(score * 100)}% grown</div>
+      <div class="tree-stage-name">${stage}</div>
+      <div class="tree-canvas">${treeSvg(stage)}</div>
+      <div class="stat-row">
+        <div class="stat-tile"><div class="num">${streak}</div><div class="label">Streak</div></div>
+        <div class="stat-tile"><div class="num">${daysComplete}</div><div class="label">Growth days</div></div>
+        <div class="stat-tile"><div class="num">${bestStreak()}</div><div class="label">Best streak</div></div>
+      </div>
+      <p style="margin-top:18px;font-size:.85rem;font-style:italic;">${reflectionNote(streak)}</p>
+    </div>
+  `;
+}
+
+function renderGrove() {
+  const screen = document.getElementById('screen');
+  const sealed = Object.entries(state.years).filter(([, y]) => y.sealed).sort((a, b) => b[0] - a[0]);
+  screen.innerHTML = `<h1>Grove</h1><p style="margin-top:6px;">Every completed year is kept here, exactly as it grew.</p>`;
+  const wrap = document.createElement('div');
+  if (sealed.length === 0) {
+    wrap.innerHTML = `<div class="empty-state" style="margin-top:18px;">Your first sealed tree will appear here once this year ends.</div>`;
+  } else {
+    wrap.className = 'grove-grid';
+    sealed.forEach(([y, data]) => {
+      const card = document.createElement('div');
+      card.className = 'grove-tree';
+      card.innerHTML = `${treeSvg(data.finalStage)}<div class="yr">${y}</div><div class="pct">${Math.round(data.finalScore * 100)}%</div>`;
+      wrap.appendChild(card);
+    });
+  }
+  screen.appendChild(wrap);
+}
+
+function renderManage() {
+  const screen = document.getElementById('screen');
+  const connected = driveSync.isConnected();
+  screen.innerHTML = `
+    <h1>Manage</h1>
+    <p style="margin-bottom:20px;">Shape the practice — add what matters, retire what doesn't.</p>
+
+    <div class="section">
+      <div class="eyebrow">New task</div>
+      <form id="taskForm">
+        <div class="field row-2">
+          <div>
+            <label for="taskIcon">Icon</label>
+            <input id="taskIcon" value="●" maxlength="2" />
+          </div>
+          <div>
+            <label for="taskName">Name</label>
+            <input id="taskName" placeholder="e.g. Water only" required />
+          </div>
+        </div>
+        <div class="field row-3">
+          <div>
+            <label for="taskType">Frequency</label>
+            <select id="taskType">
+              <option value="daily">Every day</option>
+              <option value="weekly">X per week</option>
+            </select>
+          </div>
+          <div id="targetWrap" style="display:none;">
+            <label for="taskTarget">Times / week</label>
+            <input id="taskTarget" type="number" min="1" max="7" value="3" />
+          </div>
+        </div>
+        <button type="submit" class="btn-primary">Add task</button>
+      </form>
+      <ul class="manage-list" id="taskList"></ul>
+    </div>
+
+    <div class="section">
+      <div class="eyebrow">Reminder</div>
+      <div class="field">
+        <label for="reminderHour">Nudge me after this hour if tasks remain</label>
+        <input id="reminderHour" type="number" min="0" max="23" value="${state.settings.reminderHour}" />
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="eyebrow">Google Drive sync</div>
+      <div class="sync-status">
+        <span class="sync-dot ${connected ? 'on' : ''}"></span>
+        <span class="line">
+          ${connected ? 'Connected — auto-backs up on every change' : (driveSync.isConfigured() ? 'Not connected' : 'Not set up yet')}
+          ${syncError ? `<br><span style="color:var(--danger)">${escapeHtml(syncError)}</span>` : ''}
+        </span>
+        <span class="time">${lastSyncedAt ? 'Synced ' + new Date(lastSyncedAt).toLocaleTimeString() : ''}</span>
+      </div>
+      ${connected
+        ? `<button id="disconnectDrive" class="btn-ghost" style="width:100%;">Disconnect</button>`
+        : `<button id="connectDrive" class="btn-primary">Connect Google Drive</button>`}
+    </div>
+
+    <div class="section">
+      <div class="eyebrow">Manual backup</div>
+      <p style="margin-bottom:10px;">Works with or without Drive connected — a plain JSON file you keep anywhere.</p>
+      <div class="backup-row">
+        <button id="exportBtn" class="btn-ghost">Export backup</button>
+        <button id="importBtn" class="btn-ghost">Import backup</button>
+      </div>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
+    </div>
+  `;
+
+  const typeSel = document.getElementById('taskType');
+  const targetWrap = document.getElementById('targetWrap');
+  typeSel.addEventListener('change', () => {
+    targetWrap.style.display = typeSel.value === 'weekly' ? '' : 'none';
+  });
+
+  document.getElementById('taskForm').addEventListener('submit', e => {
+    e.preventDefault();
+    addTask({
+      name: document.getElementById('taskName').value.trim(),
+      icon: document.getElementById('taskIcon').value.trim(),
+      type: typeSel.value,
+      targetPerWeek: document.getElementById('taskTarget').value,
+    });
+    renderManage();
+  });
+
+  document.getElementById('reminderHour').addEventListener('change', e => {
+    state.settings.reminderHour = Math.max(0, Math.min(23, Number(e.target.value) || 21));
+    persist();
+  });
+
+  const list = document.getElementById('taskList');
+  activeTasks().forEach(t => {
+    const li = document.createElement('li');
+    li.className = 'manage-row';
+    const freq = t.type === 'weekly' ? `${t.targetPerWeek}x / week` : 'daily';
+    li.innerHTML = `<span class="task-icon">${t.icon}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freq}</span>`;
+    const del = document.createElement('button');
+    del.className = 'btn-text';
+    del.textContent = 'Retire';
+    del.addEventListener('click', () => { archiveTask(t.id); renderManage(); });
+    li.appendChild(del);
+    list.appendChild(li);
+  });
+  if (activeTasks().length === 0) {
+    list.innerHTML = `<li class="empty-state">No tasks yet — add your first one above.</li>`;
+  }
+
+  const connectBtn = document.getElementById('connectDrive');
+  if (connectBtn) connectBtn.addEventListener('click', () => { syncError = null; connectDrive(); });
+  const disconnectBtn = document.getElementById('disconnectDrive');
+  if (disconnectBtn) disconnectBtn.addEventListener('click', disconnectDrive);
+
+  document.getElementById('exportBtn').addEventListener('click', exportBackup);
+  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', e => {
+    if (e.target.files[0]) importBackup(e.target.files[0]);
+  });
+}
+
+/* ===================== Backup ===================== */
+function exportBackup() {
+  const payload = JSON.stringify(state, null, 2);
+  const filename = `bodhi-backup-${todayKey()}.json`;
+  const blob = new Blob([payload], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importBackup(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      state = Object.assign({ tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 }, parsed);
+      checkYearRollover();
+      persist();
+      renderManage();
+    } catch (e) { /* ignore malformed file */ }
+  };
+  reader.readAsText(file);
+}
+
+/* ===================== Utils ===================== */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ===================== Boot ===================== */
+const screens = { today: renderToday, tree: renderTree, grove: renderGrove, manage: renderManage };
+driveSync.onStatusChange = () => { if (currentTab === 'manage') renderManage(); };
+loadLocal();
+checkYearRollover();
+render();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}

@@ -1,0 +1,14 @@
+{
+  "name": "Bodhi — a quiet habit tracker",
+  "short_name": "Bodhi",
+  "description": "A calm, personalizable daily/weekly habit tracker that grows a bodhi tree over the year.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05100b",
+  "theme_color": "#101d18",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
