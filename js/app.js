@@ -55,8 +55,8 @@ async function connectDrive() {
   try {
     await driveSync.connect();
     const remote = await driveSync.loadState();
-    if (remote && (remote.updatedAt || 0) > (state.updatedAt || 0)) {
-      state = Object.assign({ tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 }, remote);
+    if (remote && (Number(remote.updatedAt) || 0) > (state.updatedAt || 0)) {
+      state = sanitizeImportedState(remote);
       persist({ skipDriveSync: true });
     } else {
       await driveSync.saveState(state);
@@ -273,7 +273,7 @@ function renderToday() {
     tasks.forEach(t => {
       const li = document.createElement('li');
       li.className = 'task-row' + (isDone(t) ? ' done' : '');
-      const meta = t.type === 'weekly' ? `${weeklyProgress(t)}/${t.targetPerWeek} this week` : 'daily';
+      const meta = t.type === 'weekly' ? `${weeklyProgress(t)}/${escapeHtml(String(t.targetPerWeek))} this week` : 'daily';
       li.innerHTML = `
         <span class="task-icon">${escapeHtml(t.icon)}</span>
         <span class="task-name">${escapeHtml(t.name)}</span>
@@ -340,7 +340,8 @@ function renderGrove() {
     sealed.forEach(([y, data]) => {
       const card = document.createElement('div');
       card.className = 'grove-tree';
-      card.innerHTML = `${treeSvg(data.finalStage)}<div class="yr">${y}</div><div class="pct">${Math.round(data.finalScore * 100)}%</div>`;
+      const pct = Math.round((Number(data.finalScore) || 0) * 100);
+      card.innerHTML = `${treeSvg(data.finalStage)}<div class="yr">${escapeHtml(y)}</div><div class="pct">${pct}%</div>`;
       wrap.appendChild(card);
     });
   }
@@ -389,7 +390,7 @@ function renderManage() {
       <div class="eyebrow">Reminder</div>
       <div class="field">
         <label for="reminderHour">Nudge me after this hour if tasks remain</label>
-        <input id="reminderHour" type="number" min="0" max="23" value="${state.settings.reminderHour}" />
+        <input id="reminderHour" type="number" min="0" max="23" value="${escapeHtml(String(state.settings.reminderHour))}" />
       </div>
     </div>
 
@@ -445,8 +446,8 @@ function renderManage() {
   activeTasks().forEach(t => {
     const li = document.createElement('li');
     li.className = 'manage-row';
-    const freq = t.type === 'weekly' ? `${t.targetPerWeek}x / week` : 'daily';
-    li.innerHTML = `<span class="task-icon">${t.icon}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freq}</span>`;
+    const freq = t.type === 'weekly' ? `${escapeHtml(String(t.targetPerWeek))}x / week` : 'daily';
+    li.innerHTML = `<span class="task-icon">${escapeHtml(t.icon)}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freq}</span>`;
     const del = document.createElement('button');
     del.className = 'btn-text';
     del.textContent = 'Retire';
@@ -482,12 +483,58 @@ function exportBackup() {
   URL.revokeObjectURL(a.href);
 }
 
+function sanitizeImportedState(parsed) {
+  const clean = { tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 };
+
+  if (Array.isArray(parsed.tasks)) {
+    clean.tasks = parsed.tasks
+      .filter(t => t && typeof t.id === 'string' && typeof t.name === 'string' && (t.type === 'daily' || t.type === 'weekly'))
+      .map(t => ({
+        id: t.id,
+        name: String(t.name).slice(0, 80),
+        icon: typeof t.icon === 'string' ? t.icon.slice(0, 4) : '●',
+        type: t.type,
+        targetPerWeek: t.type === 'weekly' ? Math.max(1, Math.min(7, Number(t.targetPerWeek) || 3)) : undefined,
+        createdAt: typeof t.createdAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.createdAt) ? t.createdAt : todayKey(),
+        archivedAt: typeof t.archivedAt === 'string' ? t.archivedAt : undefined,
+      }));
+  }
+
+  if (parsed.logs && typeof parsed.logs === 'object') {
+    Object.entries(parsed.logs).forEach(([date, entries]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !entries || typeof entries !== 'object') return;
+      clean.logs[date] = {};
+      Object.keys(entries).forEach(taskId => {
+        if (entries[taskId]) clean.logs[date][taskId] = true;
+      });
+    });
+  }
+
+  if (parsed.years && typeof parsed.years === 'object') {
+    Object.entries(parsed.years).forEach(([year, data]) => {
+      if (!/^\d{4}$/.test(year) || !data || typeof data !== 'object') return;
+      clean.years[year] = {
+        sealed: !!data.sealed,
+        finalStage: TREE_STAGES.includes(data.finalStage) ? data.finalStage : 'seed',
+        finalScore: Math.max(0, Math.min(1, Number(data.finalScore) || 0)),
+      };
+    });
+  }
+
+  if (parsed.settings && typeof parsed.settings === 'object') {
+    clean.settings.reminderHour = Math.max(0, Math.min(23, Number(parsed.settings.reminderHour) || 21));
+  }
+
+  clean.updatedAt = Number(parsed.updatedAt) || 0;
+  return clean;
+}
+
 function importBackup(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
       const parsed = JSON.parse(reader.result);
-      state = Object.assign({ tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 }, parsed);
+      state = sanitizeImportedState(parsed);
       checkYearRollover();
       persist();
       renderManage();
