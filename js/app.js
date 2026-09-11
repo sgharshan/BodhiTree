@@ -377,6 +377,10 @@ function renderManage() {
             <input id="taskName" placeholder="e.g. Gym" required />
           </div>
         </div>
+        <div class="field">
+          <label for="taskNotes">Context (optional)</label>
+          <input id="taskNotes" placeholder="e.g. with Sarah, morning routine" maxlength="200" />
+        </div>
         <div class="field row-3">
           <div>
             <label for="taskType">Frequency</label>
@@ -457,7 +461,9 @@ function renderManage() {
       type: typeSel.value,
       targetPerWeek: document.getElementById('taskTarget').value,
       days,
+      notes: document.getElementById('taskNotes').value.trim(),
     });
+    document.getElementById('taskForm').reset();
     renderManage();
   });
 
@@ -474,7 +480,8 @@ function renderManage() {
     const freq = t.type === 'weekly' ? `${escapeHtml(String(t.targetPerWeek))}x / week` : 'daily';
     const days = t.days ? t.days.map(d => dayNames[d]).join(', ') : '';
     const freqLabel = days ? `${freq} · ${days}` : freq;
-    li.innerHTML = `<span class="task-icon">${escapeHtml(t.icon)}</span><span class="name">${escapeHtml(t.name)}</span><span class="freq">${freqLabel}</span>`;
+    const noteIndicator = t.notes ? ' 💭' : '';
+    li.innerHTML = `<span class="task-icon">${escapeHtml(t.icon)}</span><span class="name">${escapeHtml(t.name)}${noteIndicator}</span><span class="freq">${freqLabel}</span>`;
     const del = document.createElement('button');
     del.className = 'btn-text';
     del.textContent = 'Retire';
