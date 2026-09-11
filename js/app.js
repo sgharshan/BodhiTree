@@ -551,8 +551,12 @@ function sanitizeImportedState(parsed) {
   }
 
   if (parsed.milestones && typeof parsed.milestones === 'object') {
-    Object.entries(parsed.milestones).forEach(([key, value]) => {
-      if (typeof value === 'boolean') clean.milestones[key] = value;
+    Object.entries(parsed.milestones).forEach(([taskId, achievements]) => {
+      if (typeof achievements === 'object') {
+        clean.milestones[taskId] = Object.fromEntries(
+          Object.entries(achievements).filter(([k, v]) => [7, 30, 100].includes(Number(k)) && v === true)
+        );
+      }
     });
   }
 
