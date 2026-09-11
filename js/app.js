@@ -379,7 +379,7 @@ function renderManage() {
         </div>
         <div class="field">
           <label for="taskNotes">Context (optional)</label>
-          <input id="taskNotes" placeholder="e.g. with Sarah, morning routine" maxlength="200" />
+          <input id="taskNotes" placeholder="Add context..." maxlength="200" />
         </div>
         <div class="field row-3">
           <div>
