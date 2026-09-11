@@ -3,6 +3,7 @@ let state = {
   tasks: [],
   logs: {},
   years: {},
+  milestones: {},
   settings: { reminderHour: 21 },
   updatedAt: 0,
 };
@@ -88,13 +89,14 @@ function tasksForDay(dateKey = todayKey()) {
   return activeTasks().filter(t => t.createdAt <= dateKey && (!t.days || t.days.includes(dayOfWeek)));
 }
 
-function addTask({ name, icon, type, targetPerWeek, days }) {
+function addTask({ name, icon, type, targetPerWeek, days, notes }) {
   const task = {
     id: 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     name, icon: icon || '●', type,
     targetPerWeek: type === 'weekly' ? Math.max(1, Math.min(7, Number(targetPerWeek) || 3)) : undefined,
     days: Array.isArray(days) && days.length > 0 ? days : undefined,
     createdAt: todayKey(),
+    notes: typeof notes === 'string' ? notes.slice(0, 200).trim() : undefined,
   };
   state.tasks.push(task);
   persist();
@@ -509,7 +511,7 @@ function exportBackup() {
 }
 
 function sanitizeImportedState(parsed) {
-  const clean = { tasks: [], logs: {}, years: {}, settings: { reminderHour: 21 }, updatedAt: 0 };
+  const clean = { tasks: [], logs: {}, years: {}, milestones: {}, settings: { reminderHour: 21 }, updatedAt: 0 };
 
   if (Array.isArray(parsed.tasks)) {
     clean.tasks = parsed.tasks
@@ -523,6 +525,7 @@ function sanitizeImportedState(parsed) {
         days: Array.isArray(t.days) ? t.days.filter(d => d >= 0 && d <= 6) : undefined,
         createdAt: typeof t.createdAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.createdAt) ? t.createdAt : todayKey(),
         archivedAt: typeof t.archivedAt === 'string' ? t.archivedAt : undefined,
+        notes: typeof t.notes === 'string' ? t.notes.slice(0, 200) : undefined,
       }));
   }
 
@@ -544,6 +547,12 @@ function sanitizeImportedState(parsed) {
         finalStage: TREE_STAGES.includes(data.finalStage) ? data.finalStage : 'seed',
         finalScore: Math.max(0, Math.min(1, Number(data.finalScore) || 0)),
       };
+    });
+  }
+
+  if (parsed.milestones && typeof parsed.milestones === 'object') {
+    Object.entries(parsed.milestones).forEach(([key, value]) => {
+      if (typeof value === 'boolean') clean.milestones[key] = value;
     });
   }
 
