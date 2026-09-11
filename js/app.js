@@ -525,7 +525,7 @@ function sanitizeImportedState(parsed) {
         days: Array.isArray(t.days) ? t.days.filter(d => d >= 0 && d <= 6) : undefined,
         createdAt: typeof t.createdAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.createdAt) ? t.createdAt : todayKey(),
         archivedAt: typeof t.archivedAt === 'string' ? t.archivedAt : undefined,
-        notes: typeof t.notes === 'string' ? t.notes.slice(0, 200) : undefined,
+        notes: typeof t.notes === 'string' ? t.notes.slice(0, 200).trim() : undefined,
       }));
   }
 
