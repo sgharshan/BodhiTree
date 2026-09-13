@@ -257,6 +257,22 @@ function dayStripHtml() {
   return html + '</div>';
 }
 
+function getLastCompletionDate(taskId) {
+  const dates = Object.keys(state.logs)
+    .filter(d => state.logs[d][taskId])
+    .sort()
+    .reverse();
+  if (dates.length === 0) return null;
+  const d = new Date(dates[0] + 'T00:00:00');
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  if (todayKey(d) === todayKey(today)) return 'today';
+  if (todayKey(d) === todayKey(yesterday)) return 'yesterday';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 function renderToday() {
   const screen = document.getElementById('screen');
   const tasks = tasksForDay();
@@ -283,17 +299,34 @@ function renderToday() {
       const li = document.createElement('li');
       li.className = 'task-row' + (isDone(t) ? ' done' : '');
       const meta = t.type === 'weekly' ? `${weeklyProgress(t)}/${escapeHtml(String(t.targetPerWeek))} this week` : 'daily';
+      const noteIndicator = t.notes ? ' 💭' : '';
       li.innerHTML = `
         <span class="task-icon">${escapeHtml(t.icon)}</span>
-        <span class="task-name">${escapeHtml(t.name)}</span>
+        <span class="task-name">${escapeHtml(t.name)}${noteIndicator}</span>
         <span class="task-meta">${meta}</span>
         <span class="task-check">${isDone(t) ? '✓' : ''}</span>
       `;
-      li.addEventListener('click', () => {
-        toggleCompletion(t.id);
-        li.classList.add('pulse');
-        renderToday();
+
+      // Click to toggle completion (don't count note detail clicks)
+      li.addEventListener('click', (e) => {
+        if (!e.target.closest('.task-note-detail')) {
+          toggleCompletion(t.id);
+          li.classList.add('pulse');
+          renderToday();
+        }
       });
+
+      // Add note detail if task has notes
+      if (t.notes) {
+        const noteDetail = document.createElement('div');
+        noteDetail.className = 'task-note-detail';
+        noteDetail.innerHTML = `
+          <div class="note-text">${escapeHtml(t.notes)}</div>
+          <div class="note-meta">Last done: ${getLastCompletionDate(t.id) || 'never'}</div>
+        `;
+        li.appendChild(noteDetail);
+      }
+
       list.appendChild(li);
     });
   }
