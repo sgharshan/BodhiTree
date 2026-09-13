@@ -11,6 +11,7 @@ let currentTab = 'today';
 let driveSyncTimer = null;
 let lastSyncedAt = null;
 let syncError = null;
+let expandedTasks = new Set();  // Track which tasks have notes expanded
 
 function todayKey(d = new Date()) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -307,17 +308,27 @@ function renderToday() {
         <span class="task-check">${isDone(t) ? '✓' : ''}</span>
       `;
 
-      // Click to toggle completion (don't count note detail clicks)
+      // Click to toggle expansion (if has notes) or completion (if no notes)
       li.addEventListener('click', (e) => {
         if (!e.target.closest('.task-note-detail')) {
-          toggleCompletion(t.id);
-          li.classList.add('pulse');
+          if (t.notes) {
+            // Toggle note expansion
+            if (expandedTasks.has(t.id)) {
+              expandedTasks.delete(t.id);
+            } else {
+              expandedTasks.add(t.id);
+            }
+          } else {
+            // No notes, toggle completion as normal
+            toggleCompletion(t.id);
+            li.classList.add('pulse');
+          }
           renderToday();
         }
       });
 
-      // Add note detail if task has notes
-      if (t.notes) {
+      // Add note detail only if task has notes AND is expanded
+      if (t.notes && expandedTasks.has(t.id)) {
         const noteDetail = document.createElement('div');
         noteDetail.className = 'task-note-detail';
         noteDetail.innerHTML = `
