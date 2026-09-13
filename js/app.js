@@ -11,7 +11,6 @@ let currentTab = 'today';
 let driveSyncTimer = null;
 let lastSyncedAt = null;
 let syncError = null;
-let expandedTasks = new Set();  // Track which tasks have notes expanded
 
 function todayKey(d = new Date()) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -105,11 +104,7 @@ function addTask({ name, icon, type, targetPerWeek, days, notes }) {
 }
 function archiveTask(id) {
   const t = state.tasks.find(t => t.id === id);
-  if (t) {
-    t.archivedAt = todayKey();
-    expandedTasks.delete(id);  // Clean up expanded state
-    persist();
-  }
+  if (t) { t.archivedAt = todayKey(); persist(); }
 }
 
 /* ===================== Completion & scoring ===================== */
@@ -625,7 +620,6 @@ function importBackup(file) {
     try {
       const parsed = JSON.parse(reader.result);
       state = sanitizeImportedState(parsed);
-      expandedTasks = new Set();  // Clear stale task IDs after import
       checkYearRollover();
       persist();
       renderManage();
