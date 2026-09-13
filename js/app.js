@@ -105,7 +105,11 @@ function addTask({ name, icon, type, targetPerWeek, days, notes }) {
 }
 function archiveTask(id) {
   const t = state.tasks.find(t => t.id === id);
-  if (t) { t.archivedAt = todayKey(); persist(); }
+  if (t) {
+    t.archivedAt = todayKey();
+    expandedTasks.delete(id);  // Clean up expanded state
+    persist();
+  }
 }
 
 /* ===================== Completion & scoring ===================== */
@@ -259,12 +263,18 @@ function dayStripHtml() {
 }
 
 function getLastCompletionDate(taskId) {
-  const dates = Object.keys(state.logs)
-    .filter(d => state.logs[d][taskId])
-    .sort()
-    .reverse();
-  if (dates.length === 0) return null;
-  const d = new Date(dates[0] + 'T00:00:00');
+  let lastDate = null;
+  // Single-pass iteration to find latest date (O(n) instead of O(n log n))
+  for (const dateStr of Object.keys(state.logs)) {
+    if (state.logs[dateStr][taskId] && (!lastDate || dateStr > lastDate)) {
+      lastDate = dateStr;
+    }
+  }
+  if (!lastDate) return null;
+
+  const d = new Date(lastDate + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;  // Invalid date check
+
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
@@ -308,27 +318,17 @@ function renderToday() {
         <span class="task-check">${isDone(t) ? '✓' : ''}</span>
       `;
 
-      // Click to toggle expansion (if has notes) or completion (if no notes)
+      // Click to toggle completion (notes don't interfere)
       li.addEventListener('click', (e) => {
         if (!e.target.closest('.task-note-detail')) {
-          if (t.notes) {
-            // Toggle note expansion
-            if (expandedTasks.has(t.id)) {
-              expandedTasks.delete(t.id);
-            } else {
-              expandedTasks.add(t.id);
-            }
-          } else {
-            // No notes, toggle completion as normal
-            toggleCompletion(t.id);
-            li.classList.add('pulse');
-          }
+          toggleCompletion(t.id);
+          li.classList.add('pulse');
           renderToday();
         }
       });
 
-      // Add note detail only if task has notes AND is expanded
-      if (t.notes && expandedTasks.has(t.id)) {
+      // Add note detail if task has notes (always visible, no expand/collapse)
+      if (t.notes) {
         const noteDetail = document.createElement('div');
         noteDetail.className = 'task-note-detail';
         noteDetail.innerHTML = `
@@ -625,6 +625,7 @@ function importBackup(file) {
     try {
       const parsed = JSON.parse(reader.result);
       state = sanitizeImportedState(parsed);
+      expandedTasks = new Set();  // Clear stale task IDs after import
       checkYearRollover();
       persist();
       renderManage();
