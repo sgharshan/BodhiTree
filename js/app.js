@@ -235,6 +235,75 @@ function ringSvg(pct) {
   </svg>`;
 }
 
+function currentStreakForTask(taskId) {
+  let streak = 0;
+  let d = new Date();
+  while (true) {
+    const key = todayKey(d);
+    if (isCompleted(taskId, key)) {
+      streak++;
+      d.setDate(d.getDate() - 1);
+    } else break;
+  }
+  return streak;
+}
+
+function checkMilestone(taskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return null;
+
+  const streak = currentStreakForTask(taskId);
+  if (![7, 30, 100].includes(streak)) return null;
+
+  if (!state.milestones[taskId]) state.milestones[taskId] = {};
+  if (state.milestones[taskId][streak]) return null;
+
+  state.milestones[taskId][streak] = true;
+  persist();
+
+  return streak;
+}
+
+function showCelebration(task, milestone) {
+  const messages = {
+    7: { emoji: '🔥', text: '7-Day Streak!' },
+    30: { emoji: '🌳', text: '30-Day Milestone!' },
+    100: { emoji: '⭐', text: '100 Days of Practice!' },
+  };
+
+  const msg = messages[milestone] || { emoji: '✨', text: 'Milestone!' };
+
+  const modal = document.createElement('div');
+  modal.className = 'celebration-modal';
+  modal.innerHTML = `
+    <div class="celebration-content">
+      <div class="celebration-emoji">${msg.emoji}</div>
+      <div style="margin:12px 0;text-align:center;">
+        <div style="font-size:.9rem;color:var(--text-faint);">${escapeHtml(task.name)}</div>
+        <h2 style="margin:4px 0 0;font-size:1.4rem;color:var(--accent);">${msg.text}</h2>
+      </div>
+      <div class="celebration-flourish">
+        <svg viewBox="0 0 100 40" style="height:30px;opacity:.6;">
+          <circle cx="20" cy="20" r="3" fill="var(--accent)" opacity="0.4"/>
+          <circle cx="40" cy="15" r="3" fill="var(--accent)" opacity="0.6"/>
+          <circle cx="60" cy="20" r="3" fill="var(--accent)" opacity="0.5"/>
+          <circle cx="80" cy="18" r="3" fill="var(--accent)" opacity="0.4"/>
+        </svg>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  setTimeout(() => {
+    modal.remove();
+  }, 3000);
+
+  modal.addEventListener('click', () => {
+    modal.remove();
+  });
+}
+
 function dayStripHtml() {
   const today = new Date();
   const monday = new Date(today);
@@ -317,6 +386,10 @@ function renderToday() {
       li.addEventListener('click', (e) => {
         if (!e.target.closest('.task-note-detail')) {
           toggleCompletion(t.id);
+          const milestone = checkMilestone(t.id);
+          if (milestone) {
+            showCelebration(t, milestone);
+          }
           li.classList.add('pulse');
           renderToday();
         }
