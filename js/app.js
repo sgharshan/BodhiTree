@@ -354,6 +354,17 @@ function renderReminderBanner(tasks) {
   }
 }
 
+function renderInsights() {
+  const screen = document.getElementById('screen');
+  screen.innerHTML = `
+    <h1>Insights</h1>
+    <p style="margin-bottom:20px;">Monthly view of your practice.</p>
+    <div id="monthView" style="padding:16px;text-align:center;color:var(--text-faint);">
+      Calendar coming soon...
+    </div>
+  `;
+}
+
 function renderTree() {
   const screen = document.getElementById('screen');
   const score = yearScore();
@@ -634,7 +645,7 @@ function escapeHtml(s) {
 }
 
 /* ===================== Boot ===================== */
-const screens = { today: renderToday, tree: renderTree, grove: renderGrove, manage: renderManage };
+const screens = { today: renderToday, tree: renderTree, insights: renderInsights, grove: renderGrove, manage: renderManage };
 driveSync.onStatusChange = () => { if (currentTab === 'manage') renderManage(); };
 loadLocal();
 checkYearRollover();
