@@ -354,15 +354,163 @@ function renderReminderBanner(tasks) {
   }
 }
 
+function getMonthData(year, month) {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startingDayOfWeek = firstDay.getDay();
+
+  const days = [];
+
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    days.push(null);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    const score = dayScore(dateStr);
+    const tasks = tasksForDay(dateStr);
+    days.push({
+      date: d,
+      dateStr: dateStr,
+      score: score,
+      taskCount: tasks.filter(t => isCompleted(t.id, dateStr)).length,
+      totalTasks: tasks.length,
+      isFuture: dateStr > todayKey(),
+      isToday: dateStr === todayKey(),
+    });
+  }
+
+  return days;
+}
+
+function heatmapColor(score) {
+  if (score === 0) return 'var(--bg-card)';
+  if (score < 0.33) return 'var(--accent-soft)';
+  if (score < 0.67) return 'rgba(211,162,79,0.5)';
+  return 'var(--accent)';
+}
+
 function renderInsights() {
   const screen = document.getElementById('screen');
   screen.innerHTML = `
     <h1>Insights</h1>
     <p style="margin-bottom:20px;">Monthly view of your practice.</p>
-    <div id="monthView" style="padding:16px;text-align:center;color:var(--text-faint);">
-      Calendar coming soon...
+    <div id="monthView"></div>
+  `;
+  renderMonthView();
+}
+
+function renderMonthView() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const container = document.getElementById('monthView');
+  const days = getMonthData(year, month);
+  const monthName = new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  let html = `
+    <div style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="margin:0;font-size:1.2rem;">${monthName}</h2>
+        <button id="todayBtn" class="btn-ghost" style="padding:6px 12px;font-size:.8rem;">Today</button>
+      </div>
+
+      <table class="month-calendar" style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  let row = '<tr>';
+  days.forEach((day, idx) => {
+    if (day === null) {
+      row += '<td></td>';
+    } else {
+      const bgColor = day.isFuture ? 'transparent' : heatmapColor(day.score);
+      const borderClass = day.isToday ? 'today-border' : '';
+      const opacityClass = day.isFuture ? 'future-day' : '';
+      row += `
+        <td class="${borderClass} ${opacityClass}"
+            style="background:${bgColor};cursor:pointer;padding:12px 4px;text-align:center;border:1px solid var(--border);min-height:60px;position:relative;"
+            data-date="${day.dateStr}" onclick="showDayDetail('${day.dateStr}')">
+          <div style="font-weight:600;margin-bottom:4px;">${day.date}</div>
+          <div style="font-size:.7rem;color:var(--text-faint);">${day.totalTasks > 0 ? day.taskCount + '/' + day.totalTasks : '—'}</div>
+        </td>
+      `;
+    }
+
+    if ((idx + 1) % 7 === 0) {
+      row += '</tr>';
+      html += row;
+      row = '<tr>';
+    }
+  });
+
+  if (days.length % 7 !== 0) {
+    const remaining = 7 - (days.length % 7);
+    for (let i = 0; i < remaining; i++) {
+      row += '<td></td>';
+    }
+    html += row + '</tr>';
+  }
+
+  html += `
+        </tbody>
+      </table>
     </div>
   `;
+
+  container.innerHTML = html;
+
+  document.getElementById('todayBtn').addEventListener('click', () => {
+    switchTab('today');
+  });
+}
+
+function showDayDetail(dateStr) {
+  const tasks = tasksForDay(dateStr);
+  const completedCount = tasks.filter(t => isCompleted(t.id, dateStr)).length;
+  const score = dayScore(dateStr);
+  const dateObj = new Date(dateStr + 'T00:00:00');
+  const dateLabel = dateObj.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const modal = document.createElement('div');
+  modal.className = 'day-detail-modal';
+  modal.innerHTML = `
+    <div class="day-detail-content">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px;">
+        <div>
+          <div style="color:var(--text-faint);font-size:.85rem;">${dateLabel}</div>
+          <h3 style="margin:4px 0 0;">${Math.round(score * 100)}% complete</h3>
+        </div>
+        <button class="btn-text" onclick="this.closest('.day-detail-modal').remove()" style="padding:4px 8px;">Close</button>
+      </div>
+
+      <ul class="task-list" style="margin:0;padding:0;list-style:none;">
+        ${tasks.length === 0
+          ? '<li class="empty-state">No tasks scheduled for this day.</li>'
+          : tasks.map(t => `
+            <li style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg-card);border-radius:8px;margin-bottom:6px;font-size:.9rem;">
+              <span>${escapeHtml(t.icon)}</span>
+              <span style="flex:1;">${escapeHtml(t.name)}</span>
+              <span style="color:var(--accent);">${isCompleted(t.id, dateStr) ? '✓' : '—'}</span>
+            </li>
+          `).join('')
+        }
+      </ul>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
 }
 
 function renderTree() {

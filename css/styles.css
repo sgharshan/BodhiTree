@@ -233,6 +233,56 @@ button:disabled{opacity:.5;cursor:not-allowed;}
 
 ::selection{background:var(--accent-soft);color:var(--text);}
 
+/* ========== Month View ========== */
+.month-calendar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.month-calendar th {
+  padding: 8px 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-elevated);
+  text-align: center;
+}
+.month-calendar td {
+  user-select: none;
+}
+.month-calendar td.today-border {
+  border-color: var(--accent) !important;
+  border-width: 2px !important;
+}
+.month-calendar td.future-day {
+  opacity: 0.5;
+  cursor: default !important;
+}
+
+.day-detail-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+.day-detail-content {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  max-width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;}
 }
