@@ -637,47 +637,57 @@ function renderManage() {
 
     <div class="section">
       <div class="eyebrow">New task</div>
-      <form id="taskForm">
-        <div class="field row-2">
-          <div>
-            <label for="taskIcon">Icon</label>
-            <input id="taskIcon" value="●" maxlength="2" />
-          </div>
-          <div>
-            <label for="taskName">Name</label>
-            <input id="taskName" placeholder="e.g. Gym" required />
-          </div>
-        </div>
-        <div class="field">
-          <label for="taskNotes">Context (optional)</label>
-          <input id="taskNotes" placeholder="Add context..." maxlength="200" />
-        </div>
-        <div class="field row-3">
-          <div>
-            <label for="taskType">Frequency</label>
-            <select id="taskType">
-              <option value="daily">Every day</option>
-              <option value="weekly">X per week</option>
-            </select>
-          </div>
-          <div id="targetWrap" style="display:none;">
-            <label for="taskTarget">Times / week</label>
-            <input id="taskTarget" type="number" min="1" max="7" value="3" />
+      <form id="taskForm" class="task-form">
+        <div class="form-group">
+          <div class="field row-2">
+            <div>
+              <label for="taskIcon">Icon</label>
+              <input id="taskIcon" value="●" maxlength="2" />
+            </div>
+            <div>
+              <label for="taskName">Name</label>
+              <input id="taskName" placeholder="e.g. Gym" required />
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Specific days (optional)</label>
-          <div id="dayPicker" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="1" /> Mon</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="2" /> Tue</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="3" /> Wed</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="4" /> Thu</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="5" /> Fri</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="6" /> Sat</label>
-            <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" value="0" /> Sun</label>
+
+        <div class="form-group">
+          <div class="field">
+            <label for="taskNotes">Context (optional)</label>
+            <input id="taskNotes" placeholder="e.g. with Sarah, morning routine" maxlength="200" />
           </div>
         </div>
-        <button type="submit" class="btn-primary">Add task</button>
+
+        <div class="form-group">
+          <div class="field row-2">
+            <div>
+              <label for="taskType">Frequency</label>
+              <select id="taskType">
+                <option value="daily">Every day</option>
+                <option value="weekly">X per week</option>
+              </select>
+            </div>
+            <div id="targetWrap" style="display:none;">
+              <label for="taskTarget">Times per week</label>
+              <input id="taskTarget" type="number" min="1" max="7" value="3" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label style="display:block;margin-bottom:12px;font-size:.75rem;color:var(--text-faint);font-weight:600;letter-spacing:.02em;">Schedule on specific days (optional)</label>
+          <div id="dayPicker" class="day-picker">
+            <label class="day-option"><input type="checkbox" value="1" /><span>Mon</span></label>
+            <label class="day-option"><input type="checkbox" value="2" /><span>Tue</span></label>
+            <label class="day-option"><input type="checkbox" value="3" /><span>Wed</span></label>
+            <label class="day-option"><input type="checkbox" value="4" /><span>Thu</span></label>
+            <label class="day-option"><input type="checkbox" value="5" /><span>Fri</span></label>
+            <label class="day-option"><input type="checkbox" value="6" /><span>Sat</span></label>
+            <label class="day-option"><input type="checkbox" value="0" /><span>Sun</span></label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary" style="margin-top:20px;">Add task</button>
       </form>
       <ul class="manage-list" id="taskList"></ul>
     </div>
