@@ -200,12 +200,12 @@ input,select{
 input:focus,select:focus{border-color:var(--accent-soft);}
 
 /* Day picker styling */
-.day-picker{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+.day-picker{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;}
 .day-option{
   display:flex;align-items:center;justify-content:center;
-  padding:14px 10px;background:var(--bg-card);border:2px solid var(--border);border-radius:12px;
-  cursor:pointer;transition:all .2s ease;font-size:.85rem;font-weight:700;color:var(--text-faint);
-  user-select:none;text-transform:uppercase;letter-spacing:.05em;
+  padding:12px 6px;background:var(--bg-card);border:2px solid var(--border);border-radius:10px;
+  cursor:pointer;transition:all .2s ease;font-size:.75rem;font-weight:700;color:var(--text-faint);
+  user-select:none;text-transform:uppercase;letter-spacing:.04em;min-height:44px;
 }
 .day-option:hover{
   border-color:var(--accent-soft);background:var(--bg-elevated);transform:translateY(-2px);
@@ -217,7 +217,7 @@ input:focus,select:focus{border-color:var(--accent-soft);}
   border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px rgba(211,162,79,0.1);
 }
 .day-option:has(input:checked):hover{transform:translateY(-2px);}
-.day-option span{pointer-events:none;}
+.day-option span{pointer-events:none;white-space:nowrap;}
 input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 .row-2{display:grid;grid-template-columns:56px 1fr;gap:10px;}
 .row-3{display:grid;grid-template-columns:1fr 1fr;gap:10px;}

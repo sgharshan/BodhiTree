@@ -659,18 +659,16 @@ function renderManage() {
         </div>
 
         <div class="form-group">
-          <div class="field row-2">
-            <div>
-              <label for="taskType">Frequency</label>
-              <select id="taskType">
-                <option value="daily">Every day</option>
-                <option value="weekly">X per week</option>
-              </select>
-            </div>
-            <div id="targetWrap" style="display:none;">
-              <label for="taskTarget">Times per week</label>
-              <input id="taskTarget" type="number" min="1" max="7" value="3" />
-            </div>
+          <div class="field">
+            <label for="taskType">Frequency</label>
+            <select id="taskType">
+              <option value="daily">Every day</option>
+              <option value="weekly">X per week</option>
+            </select>
+          </div>
+          <div class="field" id="targetWrap" style="display:none;margin-top:12px;">
+            <label for="taskTarget">Times per week</label>
+            <input id="taskTarget" type="number" min="1" max="7" value="3" />
           </div>
         </div>
 
