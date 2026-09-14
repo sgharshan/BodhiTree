@@ -203,15 +203,20 @@ input:focus,select:focus{border-color:var(--accent-soft);}
 .day-picker{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
 .day-option{
   display:flex;align-items:center;justify-content:center;
-  padding:12px 8px;background:var(--bg-card);border:2px solid var(--border);border-radius:10px;
-  cursor:pointer;transition:all .2s ease;font-size:.8rem;font-weight:600;color:var(--text-faint);
-  user-select:none;
+  padding:14px 10px;background:var(--bg-card);border:2px solid var(--border);border-radius:12px;
+  cursor:pointer;transition:all .2s ease;font-size:.85rem;font-weight:700;color:var(--text-faint);
+  user-select:none;text-transform:uppercase;letter-spacing:.05em;
 }
-.day-option:hover{border-color:var(--accent-soft);}
+.day-option:hover{
+  border-color:var(--accent-soft);background:var(--bg-elevated);transform:translateY(-2px);
+}
 .day-option input{display:none;}
-.day-option input:checked + span{color:var(--accent);font-weight:700;}
-.day-option input:checked{color:var(--accent);}
-.day-option:has(input:checked){background:rgba(211,162,79,0.12);border-color:var(--accent);color:var(--accent);}
+.day-option input:checked + span{color:var(--accent);}
+.day-option:has(input:checked){
+  background:linear-gradient(135deg, rgba(211,162,79,0.15) 0%, rgba(211,162,79,0.08) 100%);
+  border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 3px rgba(211,162,79,0.1);
+}
+.day-option:has(input:checked):hover{transform:translateY(-2px);}
 .day-option span{pointer-events:none;}
 input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 .row-2{display:grid;grid-template-columns:56px 1fr;gap:10px;}
